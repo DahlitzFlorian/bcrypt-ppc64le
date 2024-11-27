@@ -1,0 +1,66 @@
+name: Build bcrypt wheel on Power
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      release:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: "linux/ppc64le"
+
+      - name: Install
+        id: install
+        run: >-
+          docker run --rm --platform "linux/ppc64le"
+          --mount "type=bind,src=$(pwd),dst=/build"
+          -w "/build" ppc64le/python:3.11 /bin/bash -ec '
+          apt-get install -y curl;
+          export PATH="/root/.cargo/bin:${PATH}";
+          curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y;
+          pip install --upgrade pip;
+          pip install --upgrade setuptools;
+          pip install --no-binary bcrypt bcrypt==${{ inputs.release }};
+          WHEEL_PATH=$(find /root/.cache/pip/wheels/ -name "bcrypt*.whl");
+          cp $WHEEL_PATH /build/;'          
+
+      - name: Create a tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "<>"
+          git tag ${{ inputs.release }}
+          git push origin ${{ inputs.release }} -f
+
+      - name: Capture the file
+        id: capture
+        run: |
+          WHEEL_PATH=$(find $PWD -name "bcrypt*.whl")
+          echo "Found $WHEEL_PATH"
+          echo "ARTIFACT=$WHEEL_PATH" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ inputs.release }}
+          tag_name: ${{ inputs.release }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: ${{ steps.capture.outputs.ARTIFACT }}
+          draft: false
+          prerelease: false
