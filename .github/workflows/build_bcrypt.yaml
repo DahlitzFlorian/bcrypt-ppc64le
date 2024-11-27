@@ -12,6 +12,10 @@ on:
         required: true
         type: string
 
+permissions:
+  actions: write
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
